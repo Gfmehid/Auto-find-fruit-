@@ -1,0 +1,428 @@
+-- ==========================================
+-- CONFIGURAÇÃO EXTERNA & SALVAMENTO
+-- ==========================================
+getgenv().NexusConfig = {
+    Team = "Pirates",                 -- Escolhe o teu time: "Pirates" ou "Marines"
+    ScriptUrl = "AQUI_O_TEU_LINK_RAW",  -- 🔗 O teu link Raw do GitHub/Pastebin para o Auto Execute
+    DiscordWebhook = "",              -- 🚨 Cole aqui o link do Webhook do teu Discord (opcional)
+    PreferredFruit = {
+        "Lightning", "Portal", "T-Rex", "Dough", "Shadow", 
+        "Venom", "Gas", "Spirit", "Tiger", "Yeti", 
+        "Magnet", "Kitsune", "Control", "Dragon", "Leopard", "Mammoth"
+    },
+    AutoStart = true,                 -- Iniciar com auto execute nas funções principais
+    MaxPlayersHop = 10                -- Máximo de players para o Server Browser Hop
+}
+
+local HttpService = game:GetService("HttpService")
+local ConfigFolder = "NovaNexus"
+local ConfigFile = ConfigFolder .. "/Config.json"
+
+local function SaveConfig()
+    pcall(function()
+        if not isfolder(ConfigFolder) then makefolder(ConfigFolder) end
+        writefile(ConfigFile, HttpService:JSONEncode(getgenv().NexusConfig))
+    end)
+end
+
+local function LoadConfig()
+    pcall(function()
+        if isfile and isfile(ConfigFile) then
+            local data = HttpService:JSONDecode(readfile(ConfigFile))
+            if type(data) == "table" then
+                for k, v in pairs(data) do
+                    getgenv().NexusConfig[k] = v
+                end
+            end
+        end
+    end)
+end
+LoadConfig()
+
+-- ==========================================
+-- FUNÇÃO DE NOTIFICAÇÃO DO DISCORD
+-- ==========================================
+local function SendDiscordWebhook(fruitName)
+    local webhook = getgenv().NexusConfig.DiscordWebhook
+    if not webhook or webhook == "" then return end
+    
+    pcall(function()
+        local data = {
+            ["content"] = "@everyone",
+            ["embeds"] = {
+                {
+                    ["title"] = "🍎 Fruta Valiosa Encontrada & Guardada!",
+                    ["description"] = string.format("O bot recolheu com sucesso e guardou a fruta **%s** no baú!", fruitName),
+                    ["color"] = 65280, -- Verde brilhante
+                    ["fields"] = {
+                        { ["name"] = "Servidor (JobId)", ["value"] = "```" .. game.JobId .. "```", ["inline"] = false }
+                    },
+                    ["footer"] = { ["text"] = "Nova Nexus | Ultimate Fruit Hub" },
+                    ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
+                }
+            }
+        }
+        
+        local req = (syn and syn.request) or request or http_request or (fluxus and fluxus.request)
+        if req then
+            req({
+                Url = webhook,
+                Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = HttpService:JSONEncode(data)
+            })
+        end
+    end)
+end
+
+-- ==========================================
+-- AUTO EXECUTE / QUEUE ON TELEPORT
+-- ==========================================
+local queueteleport = queue_on_teleport or syn.queue_on_teleport or teleport_queue
+local function AutoExecuteSetup()
+    if queueteleport and getgenv().NexusConfig.ScriptUrl ~= "" and getgenv().NexusConfig.ScriptUrl ~= "AQUI_O_TEU_LINK_RAW" then
+        queueteleport(string.format([[
+            task.wait(3)
+            loadstring(game:HttpGet("%s"))()
+        ]], getgenv().NexusConfig.ScriptUrl))
+    end
+end
+
+repeat task.wait() until game:IsLoaded()
+start_script_time = tick()
+repeat task.wait() until game:GetService("Players").LocalPlayer
+
+-- Seleção automática de Time (Pirates / Marines)
+repeat task.wait()
+    pcall(function()
+        for _, v in pairs(getconnections(game.Players.LocalPlayer.PlayerGui["Main (minimal)"].ChooseTeam.Container[getgenv().NexusConfig.Team].Frame.TextButton.Activated)) do
+            v.Function()
+        end
+    end)
+until game:GetService("Players").LocalPlayer.Team ~= nil
+
+local plr = game:GetService("Players").LocalPlayer
+local WS, RunService, ReplicatedStorage, Lighting, Players = workspace, game:GetService("RunService"), game:GetService("ReplicatedStorage"), game:GetService("Lighting"), game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local CommF_ = ReplicatedStorage.Remotes:WaitForChild("CommF_")
+local CoreGui = game:GetService("CoreGui")
+local LoadedHub
+
+Hub = {}
+Hub.Title = "Nova Nexus | Ultimate Fruit Hub"
+Hub.Game = "BloxFruits"
+
+local Fluent = loadstring(game:HttpGet("https://raw.githubusercontent.com/huyyeuemhihi/Fluent/refs/heads/main/Fluentvip.lua"))()
+
+-- Estilização elegante da Janela
+local Window = Fluent:CreateWindow({
+    Title = Hub.Title,
+    SubTitle = "✨ Premium Edition by Nova Nexus & Dwac",
+    TabWidth = 180,
+    Size = UDim2.fromOffset(600, 480),
+    Acrylic = true,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
+})
+
+local Options = Fluent.Options
+
+Notify = function(title, content, duration)
+    Fluent:Notify({
+        Title = title or "Nova Nexus",
+        Content = content or "...",
+        Duration = duration or 5
+    })
+end
+
+plr.Idled:Connect(function()
+    game:GetService("VirtualUser"):Button1Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+    task.wait(1)
+    game:GetService("VirtualUser"):Button1Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+end)
+
+local module, Settings = {}, {
+    ["Auto Fruit Finder"] = getgenv().NexusConfig.AutoStart,
+    ["Tween Speed"] = 220,
+}
+
+-- ==========================================
+-- ABAS DA INTERFACE
+-- ==========================================
+local Tabs = {
+    Finder = Window:AddTab({ Title = "🍎 Auto Fruit & Finder", Icon = "rbxassetid://6023426915" }),
+    Hop = Window:AddTab({ Title = "🌐 Server Manager", Icon = "rbxassetid://122223674767625" })
+}
+
+-- ==========================================
+-- FRUIT ESP SEMPRE ATIVO
+-- ==========================================
+local fruitEspFolder = Instance.new("Folder", CoreGui)
+fruitEspFolder.Name = "NovaNexus_AlwaysESP"
+
+RunService.RenderStepped:Connect(function()
+    fruitEspFolder:ClearAllChildren()
+    for _, v in pairs(workspace:GetChildren()) do
+        if (v:IsA("Tool") or v:IsA("Model")) and (string.find(v.Name, "Fruit") or string.find(v.Name, "Physical")) then
+            local handle = v:FindFirstChild("Handle") or v:FindFirstChildWhichIsA("BasePart")
+            if handle then
+                local localChar = plr.Character
+                local dist = 0
+                if localChar and localChar:FindFirstChild("HumanoidRootPart") then
+                    dist = math.floor((localChar.HumanoidRootPart.Position - handle.Position).Magnitude)
+                end
+
+                local bill = Instance.new("BillboardGui", fruitEspFolder)
+                bill.Name = v.Name
+                bill.Adornee = handle
+                bill.AlwaysOnTop = true
+                bill.Size = UDim2.new(0, 220, 0, 50)
+                bill.StudsOffset = Vector3.new(0, 3, 0)
+
+                local txt = Instance.new("TextLabel", bill)
+                txt.Size = UDim2.new(1, 0, 1, 0)
+                txt.BackgroundTransparency = 1
+                txt.TextColor3 = Color3.fromRGB(255, 215, 0)
+                txt.TextStrokeTransparency = 0.1
+                txt.TextSize = 15
+                txt.Font = Enum.Font.GothamBold
+                txt.Text = string.format("🌟 [FRUTA DETETADA]\n🍎 %s (%dm)", v.Name, dist)
+            end
+        end
+    end
+end)
+
+-- ==========================================
+-- CONFIGURAÇÕES NA ABA FINDER
+-- ==========================================
+Tabs.Finder:AddSection("Automação Inteligente & Salvamento")
+Tabs.Finder:AddToggle("AutoFruitFinderHop", {
+    Title = "Auto Fruit Finder + Store + Sky + Multi-Hop",
+    Description = "Recolhe todas as frutas da lista, avisa no Discord, sobe pro céu e troca de server.",
+    Default = Settings["Auto Fruit Finder"],
+    Callback = function(v)
+        Settings["Auto Fruit Finder"] = v
+        _G.AutoFruitFinderActive = v
+        if v then
+            Notify("Fruit Finder", "Sistema inteligente ativado!", 4)
+        end
+    end
+})
+
+Tabs.Finder:AddButton({
+    Title = "Salvar Configurações Manualmente",
+    Callback = function()
+        SaveConfig()
+        Notify("Configurações", "Configurações guardadas com sucesso!", 3)
+    end
+})
+
+Tabs.Finder:AddButton({
+    Title = "Guardar Todas as Frutas (Store All)",
+    Callback = function()
+        pcall(function()
+            for _, v in pairs(plr.Backpack:GetChildren()) do
+                if string.find(v.Name, "Fruit") then
+                    CommF_:InvokeServer("StoreFruit", v:GetAttribute("OriginalName") or v.Name, v)
+                end
+            end
+            for _, v in pairs(plr.Character:GetChildren()) do
+                if string.find(v.Name, "Fruit") then
+                    CommF_:InvokeServer("StoreFruit", v:GetAttribute("OriginalName") or v.Name, v)
+                end
+            end
+            Notify("Inventário", "Todas as frutas foram guardadas!", 3)
+        end)
+    end
+})
+
+-- ==========================================
+-- ABA DE SERVER MANAGER (HOP ULTRA RÁPIDO)
+-- ==========================================
+Tabs.Hop:AddSection("Controlo de Servidores")
+Tabs.Hop:AddButton({
+    Title = "Hop Server Rápido (Server Browser)",
+    Callback = function()
+        module.HopServers(getgenv().NexusConfig.MaxPlayersHop)
+    end
+})
+
+Tabs.Hop:AddButton({
+    Title = "Rejoin Server (Seguro)",
+    Callback = function()
+        game.ReplicatedStorage.__ServerBrowser:InvokeServer("teleport", game.JobId)
+    end
+})
+
+-- ==========================================
+-- MOTOR DE HOP OFICIAL OTIMIZADO E RÁPIDO
+-- ==========================================
+module.HopServers = function(counts)
+    if counts == nil then counts = 10 end
+    AutoExecuteSetup()
+    
+    spawn(function()
+        for r = 1, math.huge do
+            local success, res = pcall(function()
+                return game.ReplicatedStorage.__ServerBrowser:InvokeServer(r)
+            end)
+            if success and res then
+                for k, v in next, res do
+                    if k ~= game.JobId and v["Count"] <= counts then
+                        Notify("Server Manager", "A mudar para o servidor otimizado...", 3)
+                        game.ReplicatedStorage.__ServerBrowser:InvokeServer("teleport", k)
+                        return
+                    end
+                end
+            end
+            task.wait(0.05)
+        end
+    end)
+end
+
+-- ==========================================
+-- SISTEMA DE NOCLIP & TWEEN BALANCEADO
+-- ==========================================
+local NoClipActive = false
+spawn(function()
+    while task.wait(0.1) do
+        pcall(function()
+            if NoClipActive and plr.Character then
+                for _, v in pairs(plr.Character:GetDescendants()) do
+                    if v:IsA("BasePart") then
+                        v.CanCollide = false
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+local function BalancedTween(targetCFrame)
+    local char = plr.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local hrp = char.HumanoidRootPart
+    
+    NoClipActive = true
+    local distance = (hrp.Position - targetCFrame.Position).Magnitude
+    local speed = Settings["Tween Speed"]
+    local timeToTravel = distance / speed
+    
+    local tweenInfo = TweenInfo.new(timeToTravel, Enum.EasingStyle.Linear)
+    local tween = game:GetService("TweenService"):Create(hrp, tweenInfo, {CFrame = targetCFrame})
+    
+    tween:Play()
+    tween.Completed:Wait()
+    NoClipActive = false
+end
+
+-- ==========================================
+-- SELETOR DE FRUTAS
+-- ==========================================
+local function GetTargetFruit()
+    local pref = getgenv().NexusConfig.PreferredFruit
+    
+    for _, v in pairs(workspace:GetChildren()) do
+        if (v:IsA("Tool") or v:IsA("Model")) and (string.find(v.Name, "Fruit") or string.find(v.Name, "Physical")) then
+            local handle = v:FindFirstChild("Handle") or v:FindFirstChildWhichIsA("BasePart")
+            if handle then
+                if pref == "Any" then
+                    return v
+                elseif type(pref) == "table" then
+                    for _, fruitName in ipairs(pref) do
+                        if string.find(v.Name, fruitName) then
+                            return v
+                        end
+                    end
+                elseif type(pref) == "string" then
+                    if string.find(v.Name, pref) then
+                        return v
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- ==========================================
+-- LOOP PRINCIPAL (MULTI-FRUIT, SKY, STORE, DISCORD & HOP)
+-- ==========================================
+spawn(function()
+    while task.wait(1) do
+        if _G.AutoFruitFinderActive then
+            task.wait(2)
+            if _G.AutoFruitFinderActive then
+                local foundAny = false
+
+                while true do
+                    local targetFruit = GetTargetFruit()
+                    if not targetFruit then break end
+
+                    foundAny = true
+                    local fruitNameFound = targetFruit.Name
+                    local handle = targetFruit:FindFirstChild("Handle") or targetFruit:FindFirstChildWhichIsA("BasePart")
+                    
+                    if handle then
+                        Notify("Fruit Finder", "🎯 Fruta detetada: " .. fruitNameFound .. "! A voar...", 3)
+                        
+                        -- 1. Tween com NoClip
+                        BalancedTween(handle.CFrame + Vector3.new(0, 3, 0))
+                        task.wait(0.3)
+                        
+                        -- 2. Recolha
+                        pcall(function()
+                            if firetouchinterest then
+                                firetouchinterest(plr.Character.HumanoidRootPart, handle, 0)
+                                task.wait(0.1)
+                                firetouchinterest(plr.Character.HumanoidRootPart, handle, 1)
+                            end
+                            plr.Character.HumanoidRootPart.CFrame = handle.CFrame
+                        end)
+                        task.wait(1)
+                        
+                        -- 3. Armazenamento
+                        pcall(function()
+                            for _, tool in pairs(plr.Backpack:GetChildren()) do
+                                if string.find(tool.Name, "Fruit") then
+                                    CommF_:InvokeServer("StoreFruit", tool:GetAttribute("OriginalName") or tool.Name, tool)
+                                end
+                            end
+                            for _, tool in pairs(plr.Character:GetChildren()) do
+                                if string.find(tool.Name, "Fruit") then
+                                    CommF_:InvokeServer("StoreFruit", tool:GetAttribute("OriginalName") or tool.Name, tool)
+                                end
+                            end
+                        end)
+                        
+                        -- Dispara o alerta no Discord após guardar com sucesso!
+                        SendDiscordWebhook(fruitNameFound)
+                        
+                        Notify("Inventário", "Fruta guardada com sucesso no baú!", 3)
+                        task.wait(0.5)
+                        
+                        -- 4. Sobe para o céu
+                        if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                            NoClipActive = true
+                            plr.Character.HumanoidRootPart.CFrame = plr.Character.HumanoidRootPart.CFrame + Vector3.new(0, 800, 0)
+                            task.wait(1.5)
+                            NoClipActive = false
+                        end
+                        task.wait(0.5)
+                    else
+                        break
+                    end
+                end
+
+                -- Troca de servidor rápida após limpar o servidor
+                Notify("Fruit Finder", "Servidor limpo. A trocar de servidor rapidamente...", 3)
+                task.wait(0.5)
+                module.HopServers(getgenv().NexusConfig.MaxPlayersHop)
+                task.wait(10)
+            end
+        end
+    end
+end)
+
+LoadedHub = true
+print("[NOVA NEXUS PREMIUM] Webhook do Discord, Hop Ultrarrápido e Auto Execute carregados com sucesso!")
